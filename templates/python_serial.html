@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Serial Monitor</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #121212;
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+        }
+        .top-container {
+            width: 100%;
+            background-color: #1e1e1e;
+            padding: 10px 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            position: relative;
+            z-index: 1;
+        }
+        .top-container h1 {
+            color: #00b300;
+            margin: 0;
+        }
+        .back-button {
+            position: absolute;
+            left: 20px;
+            background: linear-gradient(90deg, #004d00, #00b300);
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+            text-align: center;
+            font-size: 16px;
+        }
+        .back-button:hover {
+            background: linear-gradient(90deg, #00b300, #004d00);
+        }
+        .main-container {
+            flex-grow: 1;
+            width: 100%;
+            display: flex;
+            padding-top: 60px;
+            overflow: hidden;
+        }
+        .side-container {
+            width: 30%;
+            background-color: #1e1e1e;
+            padding: 20px;
+            margin-left: 10px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            display: flex;
+            flex-direction: column;
+        }
+        .serial-monitor {
+            width: 70%;
+            height: calc(100vh - 60px);
+            overflow: auto;
+            background-color: #1e1e1e;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            margin-left: 20px;
+            padding: 20px;
+        }
+        select, button, input {
+            margin-bottom: 10px;
+            padding: 10px;
+            border-radius: 5px;
+            border: none;
+            background: #333;
+            color: white;
+            width: 100%;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        button {
+            background: linear-gradient(90deg, #004d00, #00b300);
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: linear-gradient(90deg, #00b300, #004d00);
+        }
+        .log {
+            background: #121212;
+            color: #00b300;
+            height: calc(100% - 40px);
+            overflow-y: auto;
+            padding: 10px;
+            border-radius: 10px;
+            font-size: 12px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        socket.on('serial_data', function(msg) {
+            const log = document.getElementById('log');
+            const p = document.createElement('p');
+            p.textContent = msg.data;
+            log.appendChild(p);
+            log.scrollTop = log.scrollHeight; // Auto-scroll to the bottom
+
+            // Limit the number of lines to 10
+            const lines = log.getElementsByTagName('p');
+            if (lines.length > 10) {
+                log.removeChild(lines[0]);
+            }
+        });
+
+        async function getPorts() {
+            const response = await fetch('/get_ports');
+            const ports = await response.json();
+            const portSelect = document.getElementById('port');
+            portSelect.innerHTML = '';
+            ports.forEach(port => {
+                const option = document.createElement('option');
+                option.value = port.device;
+                option.text = `${port.device} - ${port.description}`;
+                portSelect.appendChild(option);
+            });
+        }
+
+        async function openSerial() {
+            const port = document.getElementById('port').value;
+            const baudrate = document.getElementById('baudrate').value;
+            const isBinary = document.getElementById('binaryCheckbox').checked;
+            const formData = new FormData();
+            formData.append('port', port);
+            formData.append('baudrate', baudrate);
+            formData.append('is_binary', isBinary);
+
+            const response = await fetch('/open_serial', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+            if (result.status === 'success') {
+                alert('Serial port opened successfully');
+            } else {
+                alert(`Error: ${result.message}`);
+            }
+        }
+
+        window.onload = getPorts;
+    </script>
+</head>
+<body>
+    <div class="top-container">
+        <button class="back-button" onclick="window.location.href='/'">Back to Home</button>
+        <h1>Serial Monitor</h1>
+    </div>
+    <div class="main-container">
+        <div class="side-container">
+            <h2>Select Serial Port</h2>
+            <form onsubmit="event.preventDefault(); openSerial();">
+                <div class="input-group">
+                    <select id="port" name="port" required></select>
+                    <input type="number" id="baudrate" name="baudrate" placeholder="Baud Rate" value="115200" required>
+                </div>
+                <label for="binaryCheckbox">Binary Mode</label>
+                <input type="checkbox" id="binaryCheckbox" name="binaryCheckbox">
+                <button type="submit">Open Serial Port</button>
+            </form>
+        </div>
+        <div class="serial-monitor">
+            <div class="log" id="log">
+                <!-- Serial log will appear here -->
+            </div>
+        </div>
+    </div>
+</body>
+</html>
