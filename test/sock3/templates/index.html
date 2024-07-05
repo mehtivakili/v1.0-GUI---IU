@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Current Time</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
+</head>
+<body>
+    <h1>Current Time</h1>
+    <p id="time">Loading...</p>
+
+    <script>
+        var socket = io();
+
+        socket.on('time', function(data) {
+            document.getElementById('time').innerHTML = data.time;
+        });
+    </script>
+</body>
+</html>

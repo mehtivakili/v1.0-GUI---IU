@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>SocketIO Data Example</title>
+    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
+</head>
+<body>
+    <h1>SocketIO Data Example</h1>
+    <button id="getDataBtn">Get Data</button>
+    <pre id="jsonData"></pre>
+
+    <script>
+        var socket = io();
+
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+        });
+
+        let TioData = [];
+        let accelX = [], accelY = [], accelZ = [];
+        let gyroX = [], gyroY = [], gyroZ = [];
+
+        socket.on('aa', function(data) {
+            const { Tio, accel, gyro } = data;
+            
+            console.log('Received data:', Tio, accel, gyro); // Debug statement
+
+            TioData.push(Tio);
+            accelX.push(accel[0]);
+            accelY.push(accel[1]);
+            accelZ.push(accel[2]);
+            gyroX.push(gyro[0]);
+            gyroY.push(gyro[1]);
+            gyroZ.push(gyro[2]);
+
+            document.getElementById('jsonData').textContent = `
+                Tio: ${JSON.stringify(Tio, null, 2)}
+                Accel: ${JSON.stringify(accel, null, 2)}
+                Gyro: ${JSON.stringify(gyro, null, 2)}
+            `;
+        });
+    </script>
+</body>
+</html>

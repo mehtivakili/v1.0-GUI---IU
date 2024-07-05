@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>WebSocket Data Sender</title>
+</head>
+<body>
+    <h1>WebSocket Data</h1>
+    <ul id="messages"></ul>
+
+    <script>
+        var socket = new WebSocket("ws://localhost:6789");
+
+        socket.onopen = function() {
+            console.log("Connected to WebSocket server");
+        };
+
+        socket.onmessage = function(event) {
+            var messages = document.getElementById("messages");
+            var message = document.createElement("li");
+            message.textContent = event.data;
+            messages.appendChild(message);
+        };
+
+        socket.onclose = function() {
+            console.log("Disconnected from WebSocket server");
+        };
+    </script>
+</body>
+</html>
