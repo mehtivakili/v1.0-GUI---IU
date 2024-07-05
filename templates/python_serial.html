@@ -160,7 +160,43 @@
         .flash {
             color: red;
             animation: slow-flash 2s infinite; /* Adjust duration as needed */
-}
+        }
+
+        #timerDisplayContainer {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 20px;
+            position: relative;}
+
+        #timerDisplay {
+            font-size: 2em;
+            font-weight: bold;
+            z-index: 1; /* Ensure it's above the ring */
+        }
+
+        @keyframes flashingRing {
+            0% {
+                box-shadow: 0 0 10px 2px rgba(255, 0, 0, 0.5);
+            }
+            50% {
+                box-shadow: 0 0 10px 10px rgba(255, 0, 0, 1);
+            }
+            100% {
+                box-shadow: 0 0 10px 2px rgba(255, 0, 0, 0.5);
+            }
+        }
+
+        .flashing-ring {
+            content: '';
+            position: absolute;
+            width: 100px; /* Adjust size as needed */
+            height: 100px; /* Adjust size as needed */
+            border-radius: 50%;
+            animation: flashingRing 2s infinite; /* Adjust timing as needed */
+        }
+
+        
 
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
@@ -249,6 +285,15 @@
             });
         }
 
+        function generateDefaultRecordingName() {
+            const now = new Date();
+            const year = now.getFullYear().toString().slice(-2); // YY
+            const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
+            const day = String(now.getDate()).padStart(2, '0'); // DD
+            const hours = String(now.getHours()).padStart(2, '0'); // HH
+            const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
+            return `${year}${month}${day}${hours}${minutes}`;
+        }
 
 
         async function getPorts() {
@@ -265,6 +310,8 @@
         }
 
         async function openSerial() {
+            const configSerial = document.getElementById('configSerial')
+
             const port = document.getElementById('port').value;
             const baudrate = document.getElementById('baudrate').value;
             // const isBinary = document.getElementById('binaryCheckbox').checked;
@@ -280,6 +327,7 @@
             const result = await response.json();
             if (result.status === 'success') {
                 isSerialPortOpen = true; // Update flag
+                configSerial.style.display = 'none'
                 // alert('Serial port opened successfully');
             } else {
                 alert(`Error: ${result.message}`);
@@ -294,7 +342,7 @@ function calculateFinalTime() {
     const T_wait = parseFloat(document.getElementById('T_wait').value);
     
     const finalTime = initiationStaticInterval + (turnCounts * T_wait);
-    document.getElementById('finalTimeDisplay').textContent = `Final Time: ${finalTime} seconds`;
+    document.getElementById('finalTimeDisplay').textContent = `Total Time: ${finalTime} seconds`;
 
     return finalTime;
 }
@@ -302,6 +350,7 @@ function calculateFinalTime() {
 function startTimer(duration) {
     let timer = 0;
     const display = document.getElementById('timerDisplay');
+    const timerContainer = document.getElementById('timerDisplayContainer');
     display.style.display = 'block';
     display.textContent = timer;
 
@@ -310,6 +359,9 @@ function startTimer(duration) {
     const T_wait = parseFloat(document.getElementById('T_wait').value);
     
     let turnMessageShown = false;
+        // Add the flashing ring class
+        timerContainer.classList.add('flashing-ring');
+
 
     timerInterval = setInterval(() => {
         timer++;
@@ -325,17 +377,28 @@ function startTimer(duration) {
         if (timer >= duration) {
             clearInterval(timerInterval);
             display.style.display = 'none';
+            isRecording = false
             showActionButtons();
+            timerContainer.classList.remove('flashing-ring'); // Remove the flashing ring class
         }
     }, 1000); // Update every second
 }
 
 
 function resetToStartRecordingState() {
+    resetTime()
     const startStopButton = document.getElementById('startStopButton');
     startStopButton.textContent = 'Start Recording';
     startStopButton.classList.remove('stop-recording');
+    startStopButton.style.display = 'flex'; // Ensure it's displayed
+    startStopButton.style.justifyContent = 'center'; // Center the text
+    startStopButton.style.alignItems = 'center'; // Center the text
+
+    const actionButtons = document.getElementById('actionButtons');
+    actionButtons.style.display = 'none';
+    
 }
+
 
 function showActionButtons() {
     const startStopButton = document.getElementById('startStopButton');
@@ -370,6 +433,9 @@ function showMessage() {
         async function toggleRecording() {
             // clearPlots();
             // console.log(isRecording)
+            resetTime();
+            const timerContainer = document.getElementById('timerDisplayContainer');
+
                 const startStopButton = document.getElementById('startStopButton');
             if(isSerialPortOpen === false) {
                 alert('Please open the serial port first.');
@@ -387,6 +453,9 @@ function showMessage() {
                 console.log("did work")
                 stopRecording();
                 resetToStartRecordingState();
+                // Add the flashing ring class
+                timerContainer.classList.remove('flashing-ring'); // Remove the flashing ring class
+
             } else {
                 alert('Error stopping recording');
             }
@@ -415,6 +484,7 @@ function showMessage() {
             if (result.status === 'success') {
                 document.getElementById('recordingName').value = fileName; // Display the recording name as file name
                 startTimer(finalTime); // Start the timer when recording starts
+                console.log('hehehe')
                 // alert('Recording started successfully');
                 startStopButton.textContent = 'Stop Recording';
                 startStopButton.classList.add('stop-recording');
@@ -425,11 +495,13 @@ function showMessage() {
          }
 
          function stopRecording() {
+            resetTime()
             clearInterval(timerInterval); // Stop the timer interval
             clearPlots(); // Clear the plots
             isRecording = false; // Reset the recording state
             const display = document.getElementById('timerDisplay');
-            display.style.display = 'none';
+            display.style.display = 'none'; // Hide the timer display
+            // display.style.visibility = 'hidden'
             display.textContent = 0;
             const startStopButton = document.getElementById('startStopButton');
             startStopButton.textContent = 'Start Recording';
@@ -441,6 +513,7 @@ function showMessage() {
             clearInterval(timerInterval); // Stop the timer interval
             const display = document.getElementById('timerDisplay');
             display.style.display = 'none'; // Hide the timer display
+            // display.style.visibility = 'hidden'
             display.textContent = '0'; // Reset the timer display to 0
         }
 
@@ -479,12 +552,33 @@ function showMessage() {
         }
 
         function goBack() {
-            window.location.href = '/python_serial';
+            // window.location.href = '/python_serial';
+            resetToStartRecordingState()
+            // stopRecording()
         }
 
-        function calibrate() {
-            alert('Calibrate button clicked');
+        async function calibrate() {
+            // alert('Calibrate button clicked');
+            if (isRecording) {
+            // Stop Recording Logic
+            console.log("Calibration started")
+            const response = await fetch('/calibrate', {
+                method: 'GET'
+            });
+            if (response.ok) {
+                // alert('Recording stopped');
+                // clearPlot();
+                console.log("did calib")
+                // stopRecording();
+                // resetToStartRecordingState();
+                // // Add the flashing ring class
+                timerContainer.classList.remove('flashing-ring'); // Remove the flashing ring class
+
+            } else {
+                alert('Error stopping calib');
+            }        
         }
+    }
 
         async function closeSerial() {
             const response = await fetch('/close_serial', {
@@ -515,7 +609,9 @@ function showMessage() {
         });
 
         document.addEventListener('DOMContentLoaded', function() {
-            
+            const recordingNameInput = document.getElementById('recordingName');
+            recordingNameInput.placeholder = generateDefaultRecordingName();
+           
             resetTime();
 
             // Update the final time in real-time as the user inputs values
@@ -555,17 +651,22 @@ function showMessage() {
     </div>
     <div class="main-container">
         <div class="side-container">
-            <h2>Select Serial Port</h2>
-            <form onsubmit="event.preventDefault(); openSerial();">
-                <div class="input-group">
-                    <select id="port" name="port" required></select>
-                    <input type="number" id="baudrate" name="baudrate" placeholder="Baud Rate" value="115200" required>
-                </div>
+            <div id="configSerial">
+                <h2>Select Serial Port</h2>
+                <form onsubmit="event.preventDefault(); openSerial();">
+                    <div class="input-group">
+                        <select id="port" name="port" required></select>
+                        <input type="number" id="baudrate" name="baudrate" placeholder="Baud Rate" value="115200" required>
+
+                    </div>
+
                 <!-- <label for="binaryCheckbox">Binary Mode</label>
                     <input type="checkbox" id="binaryCheckbox" name="binaryCheckbox" checked> -->
                     <button onclick="clearPlots()" type="submit">Open Serial Port</button>
 
-            </form>
+                </form>
+            </div>
+
             <div>
                 <div class="input-group">
                     <label for="recordingName" aria-placeholder="please enter the file name">File Name</label>
@@ -590,9 +691,12 @@ function showMessage() {
             </div>
             <div style="display: flex; flex-direction: row; gap: 60px;">
                 <p id="finalTimeDisplay">Final Time: 0 seconds</p>
-                <p id="timerDisplay" style="display: none; font-size: 20px; color: white; margin-top: 10px;"></p>    
-                <p id="flashMessage" class="flash" style="display: none;">Turn the device</p>
+                <div id="timerDisplayContainer">
+                    <div id="timerDisplay" style="display: none; font-size: 20px; color: white; margin-top: 10px;"></div>
+                </div>               
+                <!-- <p id="timerDisplay" style="display: none; font-size: 20px; color: white; margin-top: 10px;"></p>     -->
             </div>
+            <p id="flashMessage" class="flash" style="display: none;">Turn the device</p>
 
             <!-- LaTeX formatted equation -->
             <p id="latexEquation">Total time = Initiation Static Interval + Turn Counts * T_wait</p>

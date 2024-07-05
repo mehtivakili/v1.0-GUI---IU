@@ -171,6 +171,7 @@ def calculate_checksum(data):
     return sum(data) & 0xFF
 
 offset = 0
+from datetime import datetime
 
 def read_serial_data(true):
     global serial_running
@@ -181,8 +182,12 @@ def read_serial_data(true):
     global Timer
     global count
     global set_offset
+    global most_recent_acc_file
+    global most_recent_gyro_file
+
     # offset = 0  # Set this to your required offset
     last_Tio = 0
+    # Timer = 10000
     current_second_start = 0
     packets_count = 0
     set_offset = False
@@ -193,75 +198,97 @@ def read_serial_data(true):
     # Send the 'c' character to request data
     check = 'c'
     serial_port.write(check.encode())
-    with open('data_log.csv', mode='a', newline='') as file:
-        writer = csv.writer(file)
+    # with open('data_log.csv', mode='a', newline='') as file:
+    #     writer = csv.writer(file)
+    timestamp = datetime.now().strftime("%Y%m%d%H%M")
+    acc_filename = f"acc-{timestamp}.csv"
+    gyro_filename = f"gyro-{timestamp}.csv"
 
 
-        while serial_running:
-            if serial_port.in_waiting >= 29:  # Wait for the full packet
-                first_byte = serial_port.read(1)  # Read the first byte
-                if first_byte == check.encode():  # Check if it matches 'c'
-                    data = serial_port.read(28)  # Read the remaining 28 bytes
-                    if len(data) == 28:
-                        global numbers
-                        numbers = struct.unpack('<7f', data)  # Unpack the 7 floats
-                        if set_offset == False:
-                            offset = numbers[0]
-                            set_offset = True
-                        # Extract data
-                        Tio = numbers[0] - offset
-                        accel = numbers[1:4]
-                        gyro = numbers[4:7]
-                        # Initialize the first Tio and current second start
-                        if last_Tio is None:
-                            last_Tio = Tio
-                            current_second_start = int(Tio)
-                                                # Increment the cycle counter
-                        cycle_counter += 1
+    # Update the most recent filenames
+    most_recent_acc_file = acc_filename
+    most_recent_gyro_file = gyro_filename
 
-                        # Emit data every 20 cycles
-                        if cycle_counter >= 10:
-                            sio_client.emit('sensor_data', {'Tio': Tio, 'accel': accel, 'gyro': gyro})
-                            cycle_counter = 0  # Reset the counter
-                        # Write data to CSV file
 
-                        # Check for Tio change and calculate rate
-                        if int(Tio) != current_second_start:
-                            # Print the rate for the last second
-                            print(f"Tio: {Tio}, Data rate: {packets_count} packets in the last second")
-                        # Emit data to all connected clients through the Flask server
-                            # socketio.emit('sensor_data', {'Tio': Tio, 'accel': accel, 'gyro': gyro})
-                        
-                        # Emit data to the Node.js server
-                            # sio_client.emit('sensor_data', {'Tio': Tio, 'accel': accel, 'gyro': gyro})
 
-                            count = packets_count
-                            # data_queue.put(packets_count)
-                            # print(offset)
-                            # Reset the packet count for the new second
-                            packets_count = 0
-                            current_second_start = int(Tio)
-
-                        # Increment the packet count for the current second
-                        packets_count += 1
+    while serial_running:
+        if serial_port.in_waiting >= 29:  # Wait for the full packet
+            first_byte = serial_port.read(1)  # Read the first byte
+            if first_byte == check.encode():  # Check if it matches 'c'
+                data = serial_port.read(28)  # Read the remaining 28 bytes
+                if len(data) == 28:
+                    global numbers
+                    numbers = struct.unpack('<7f', data)  # Unpack the 7 floats
+                    if set_offset == False:
+                        offset = numbers[0]
+                        set_offset = True
+                    # Extract data
+                    Tio = numbers[0] - offset
+                    accel = numbers[1:4]
+                    gyro = numbers[4:7]
+                    # Initialize the first Tio and current second start
+                    if last_Tio is None:
                         last_Tio = Tio
+                        current_second_start = int(Tio)
+                                            # Increment the cycle counter
+                    cycle_counter += 1
 
-                        if (Timer != 0) :
-                            if (start_time != 0):
-                                # Save data to CSV
-                                writer.writerow([Tio, accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2]])
-                                end_time = time.time()
-                                if (end_time - start_time > Timer):
-                                    break
-                            else: 
-                                start_time = time.time()
+                    # Emit data every 20 cycles
+                    if cycle_counter >= 35:
+                        sio_client.emit('sensor_data', {'Tio': Tio, 'accel': accel, 'gyro': gyro})
+                        cycle_counter = 0  # Reset the counter
+                    # Write data to CSV file
+
+                    # Check for Tio change and calculate rate
+                    if int(Tio) != current_second_start:
+                        # Print the rate for the last second
+                        print(f"Tio: {Tio}, Data rate: {packets_count} packets in the last second")
+                    # Emit data to all connected clients through the Flask server
+                        # socketio.emit('sensor_data', {'Tio': Tio, 'accel': accel, 'gyro': gyro})
+                    
+                    # Emit data to the Node.js server
+                        # sio_client.emit('sensor_data', {'Tio': Tio, 'accel': accel, 'gyro': gyro})
+
+                        count = packets_count
+                        # data_queue.put(packets_count)
+                        # print(offset)
+                        # Reset the packet count for the new second
+                        packets_count = 0
+                        current_second_start = int(Tio)
+
+                    # Increment the packet count for the current second
+                    packets_count += 1
+                    last_Tio = Tio
+
+                    if (Timer != 0) :
+                        if (start_time != 0):
+                            # Save data to CSV
+                            # writer.writerow([Tio, accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2]])
+                            end_time = time.time()
+                            if (end_time - start_time < Timer):
+                                # break
+                                # Open the CSV file in append mode
+                                # with open('data_log.csv', mode='a', newline='') as file:
+                                #     writer = csv.writer(file)
+                                #     # Save data to CSV
+                                #     writer.writerow([Tio, accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2]])
+                                with open(acc_filename, mode='a', newline='') as acc_file:
+                                    acc_writer = csv.writer(acc_file)
+                                    acc_writer.writerow([Tio, accel[0], accel[1], accel[2]])
+
+                                with open(gyro_filename, mode='a', newline='') as gyro_file:
+                                    gyro_writer = csv.writer(gyro_file)
+                                    gyro_writer.writerow([Tio, gyro[0], gyro[1], gyro[2]])
+
+                        else: 
+                            start_time = time.time()
 
 
-                    else:
-                        print(f"Expected 28 bytes but received {len(data)} bytes.")
                 else:
-                    print("First byte did not match expected 'c' character.")
-                    # Handle unexpected first byte case if needed
+                    print(f"Expected 28 bytes but received {len(data)} bytes.")
+            else:
+                print("First byte did not match expected 'c' character.")
+                # Handle unexpected first byte case if needed
 
 Timer = 0
 
@@ -282,6 +309,7 @@ def start_client():
 @app.route('/start_recording', methods=['POST'])
 def start_recording():
     print('haha')
+    
     global offset, Timer
     Timer = float(request.form['offset'])
     if True:
@@ -335,6 +363,19 @@ def plot_data():
         return send_file(plot_file_path, mimetype='image/png')
     except FileNotFoundError:
         return jsonify(status='error', message='File not found'), 404
+
+@app.route('/calibrate', methods=['GET'])
+def calibrate():
+    if most_recent_acc_file and most_recent_gyro_file:
+        command = f"./test_imu_calib {most_recent_acc_file} {most_recent_gyro_file}"
+        try:
+            output = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
+            return jsonify({'status': 'success', 'output': output.decode('utf-8')})
+        except subprocess.CalledProcessError as e:
+            return jsonify({'status': 'error', 'message': e.output.decode('utf-8')})
+    else:
+        return jsonify({'status': 'error', 'message': 'No recent files to calibrate'})
+
 
 
 # @socketio.on('connect')
