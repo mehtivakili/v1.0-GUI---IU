@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, jsonify, send_from_directory
+from flask import Flask, request, render_template, jsonify, send_from_directory, send_file
 from flask_cors import CORS
 import os
 import esptool
@@ -16,7 +16,12 @@ import queue
 from flask_socketio import SocketIO
 # import eventlet
 import socketio
+
+import matplotlib
+matplotlib.use('Agg')  # Use a non-GUI backend
+
 import matplotlib.pyplot as plt
+
 import pandas as pd
 
 sio_client = socketio.Client()
@@ -32,6 +37,38 @@ socketio = SocketIO(app)
 message_queue = queue.Queue()
 
 CORS(app)
+
+# Calibration parameters
+calibration_enabled = False
+Ta = [[1, -0.00546066, 0.00101399], [0, 1, 0.00141895], [0, 0, 1]]
+Ka = [[0.00358347, 0, 0], [0, 0.00358133, 0], [0, 0, 0.00359205]]
+Tg = [[1, -0.00614889, -0.000546488], [0.0102258, 1, 0.000838491], [0.00412113, 0.0020154, 1]]
+Kg = [[0.000531972, 0, 0], [0, 0.000531541, 0], [0, 0, 0.000531]]
+acce_bias = [-8.28051, -4.6756, -0.870355]
+gyro_bias = [4.53855, 4.001, -1.9779]
+
+# calibration_enabled = False
+# Ta = [[1, -0.0033593, -0.00890639], [0, 1, -0.0213341], [0, 0, 1]]
+# Ka = [[0.00241278, 0, 0], [0, 0.00242712, 0], [0, 0, 0.00241168]]
+# Tg = [[1, 0.00593634, 0.00111101], [0.00808812, 1, -0.0535569], [0.0253076, -0.0025513, 1]]
+# Kg = [[0.000209295, 0, 0], [0, 0.000209899, 0], [0, 0, 0.000209483]]
+# acce_bias = [33124.2, 33275.2, 32364.4]
+# gyro_bias = [32777.1, 32459.8, 32511.8]
+
+
+
+def apply_calibration(accel, gyro):
+    acce_calibrated = [
+        ((int)(((Ka[0][0] * Ta[0][0]) + (Ka[0][1] * Ta[1][1]) + (Ka[0][2] * Ta[2][2])) * (accel[0] - acce_bias[0]) * 1000)) / 1000.0,
+        ((int)(((Ka[1][1] * Ta[1][1]) + (Ka[1][2] * Ta[2][2])) * (accel[1] - acce_bias[1]) * 1000)) / 1000.0,
+        ((int)(((Ka[2][2] * Ta[2][2])) * (accel[2] - acce_bias[2]) * 1000)) / 1000.0
+    ]
+    gyro_calibrated = [
+        ((int)(((Kg[0][0] * Tg[0][0]) + (Kg[0][1] * Tg[1][1]) + (Kg[0][2] * Tg[2][2])) * (gyro[0] - gyro_bias[0]) * 1000)) / 1000.0,
+        ((int)(((Kg[1][0] * Tg[1][0]) + (Kg[1][1] * Tg[1][1]) + (Kg[1][2] * Tg[2][2])) * (gyro[1] - gyro_bias[1]) * 1000)) / 1000.0,
+        ((int)(((Kg[2][0] * Tg[2][0]) + (Kg[2][1] * Tg[2][1]) + (Kg[2][2] * Tg[2][2])) * (gyro[2] - gyro_bias[2]) * 1000)) / 1000.0
+    ]
+    return acce_calibrated, gyro_calibrated
 
 
 FIRMWARE_BASE_PATH = 'firmwares'
@@ -184,6 +221,7 @@ def read_serial_data(true):
     global set_offset
     global most_recent_acc_file
     global most_recent_gyro_file
+    global calibration_enabled
 
     # offset = 0  # Set this to your required offset
     last_Tio = 0
@@ -209,6 +247,9 @@ def read_serial_data(true):
     most_recent_acc_file = acc_filename
     most_recent_gyro_file = gyro_filename
 
+    # most_recent_acc_file = "test_imu_acc.calib"
+    # most_recent_gyro_file = "test_imu_gyro.calib"
+
 
 
     while serial_running:
@@ -226,6 +267,10 @@ def read_serial_data(true):
                     Tio = numbers[0] - offset
                     accel = numbers[1:4]
                     gyro = numbers[4:7]
+
+                    if calibration_enabled:
+                        accel, gyro = apply_calibration(accel, gyro)
+
                     # Initialize the first Tio and current second start
                     if last_Tio is None:
                         last_Tio = Tio
@@ -272,14 +317,27 @@ def read_serial_data(true):
                                 #     writer = csv.writer(file)
                                 #     # Save data to CSV
                                 #     writer.writerow([Tio, accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2]])
+                                # with open(acc_filename, mode='a', newline='') as acc_file:
+                                #     acc_writer = csv.writer(acc_file)
+                                #     # acc_writer.writerow([Tio, accel[0], accel[1], accel[2]])
+                                #     acc_writer.writerow([f"{Tio:.7e}", f"{accel[0]:.7e}", f"{accel[1]:.7e}", f"{accel[2]:.7e}"])
+                                # with open(gyro_filename, mode='a', newline='') as gyro_file:
+                                #     gyro_writer = csv.writer(gyro_file)
+                                #     # gyro_writer.writerow([Tio, gyro[0], gyro[1], gyro[2]])
+                                #     gyro_writer.writerow([f"{Tio:.7e}", f"{gyro[0]:.7e}", f"{gyro[1]:.7e}", f"{gyro[2]:.7e}"])
+
+                                formatted_accel = [f"{Tio:.7e}", f"{accel[0]:.7e}", f"{accel[1]:.7e}", f"{accel[2]:.7e}"]
+                                formatted_gyro = [f"{Tio:.7e}", f"{gyro[0]:.7e}", f"{gyro[1]:.7e}", f"{gyro[2]:.7e}"]
+
+                                # formatted_accel_str = "   ".join(formatted_accel)
+                                # formatted_gyro_str = "   ".join(formatted_gyro)
+
                                 with open(acc_filename, mode='a', newline='') as acc_file:
-                                    acc_writer = csv.writer(acc_file)
-                                    acc_writer.writerow([Tio, accel[0], accel[1], accel[2]])
-
+                                    acc_writer = csv.writer(acc_file, delimiter=' ', quoting=csv.QUOTE_MINIMAL)
+                                    acc_writer.writerow(formatted_accel)
                                 with open(gyro_filename, mode='a', newline='') as gyro_file:
-                                    gyro_writer = csv.writer(gyro_file)
-                                    gyro_writer.writerow([Tio, gyro[0], gyro[1], gyro[2]])
-
+                                    gyro_writer = csv.writer(gyro_file, delimiter=' ', quoting=csv.QUOTE_MINIMAL)
+                                    gyro_writer.writerow(formatted_gyro)                        
                         else: 
                             start_time = time.time()
 
@@ -310,7 +368,7 @@ def start_client():
 def start_recording():
     print('haha')
     
-    global offset, Timer
+    global offset, Timer, acc_filename, gyro_filename
     Timer = float(request.form['offset'])
     if True:
         # serial_port.write(b'c')
@@ -319,6 +377,15 @@ def start_recording():
         if True:
             # numbers = struct.unpack('<7f', data)
             offset = numbers[0]
+            timestamp = datetime.now().strftime("%Y%m%d%H%M")
+            acc_filename = f"acc-{timestamp}.csv"
+            gyro_filename = f"gyro-{timestamp}.csv"
+
+
+            # Update the most recent filenames
+            most_recent_acc_file = acc_filename
+            most_recent_gyro_file = gyro_filename
+
             # print(offset)
             return jsonify({'status': 'success'})
         else:
@@ -340,42 +407,154 @@ def close_serial():
 def stop_recording():
     print("hahahasdfafafads")
     # Implement your stop recording logic here
+        # Delete the most recent files
+    if most_recent_acc_file and os.path.exists(most_recent_acc_file):
+        os.remove(most_recent_acc_file)
+        print(f"Deleted file: {most_recent_acc_file}")
+    if most_recent_gyro_file and os.path.exists(most_recent_gyro_file):
+        os.remove(most_recent_gyro_file)
+        print(f"Deleted file: {most_recent_gyro_file}")
     return jsonify(status='successfully stopped')
+
 
 @app.route('/plot_data', methods=['GET'])
 def plot_data():
-    recording_name = request.args.get('recordingName')
-    if not recording_name:
-        return jsonify(status='error', message='Recording name not provided'), 400
+    global most_recent_acc_file, most_recent_gyro_file
+    # recording_name = request.args.get('recordingName')
+    # if not recording_name:
+    #     return jsonify(status='error', message='Recording name not provided'), 400
 
-    # Implement logic to read data file based on recording_name
-    # For example, assume you save the data in a CSV file named <recording_name>.csv
-    file_path = f'{recording_name}.csv'
+    # # Construct file paths based on recording name
+    # acc_file_path = most_recent_acc_file
+    # gyro_file_path = most_recent_gyro_file
+
     try:
-        data = pd.read_csv(file_path)
-        plt.plot(data['time'], data['value'])  # Adjust the column names as needed
-        plt.title(f'Recording: {recording_name}')
-        plt.xlabel('Time')
-        plt.ylabel('Value')
-        plot_file_path = f'{recording_name}.png'
-        plt.savefig(plot_file_path)
-        plt.close()
+        # Call the plotting script as a subprocess
+        result = subprocess.run(
+            ["python3", "plot_script.py", most_recent_acc_file, most_recent_gyro_file],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            # Log the stderr output for debugging
+            print(f"Error: {result.stderr.strip()}")
+            return jsonify(status='error', message=result.stderr.strip()), 500
+
+        plot_file_path = result.stdout.strip()
+
         return send_file(plot_file_path, mimetype='image/png')
-    except FileNotFoundError:
-        return jsonify(status='error', message='File not found'), 404
+    except FileNotFoundError as e:
+        return jsonify(status='error', message=str(e)), 404
+
+import requests  # Ensure you have requests module installed
 
 @app.route('/calibrate', methods=['GET'])
 def calibrate():
+    # most_recent_acc_file ="xsens_acc.mat"
+    # most_recent_gyro_file = "xsens_gyro.mat"
     if most_recent_acc_file and most_recent_gyro_file:
         command = f"./test_imu_calib {most_recent_acc_file} {most_recent_gyro_file}"
         try:
-            output = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
-            return jsonify({'status': 'success', 'output': output.decode('utf-8')})
-        except subprocess.CalledProcessError as e:
-            return jsonify({'status': 'error', 'message': e.output.decode('utf-8')})
+            child = pexpect.spawn(command)
+            for _ in range(3):
+                child.sendline("")  # Send "Enter" key press
+                time.sleep(3)  # Wait for 2 seconds
+            child.expect(pexpect.EOF)
+            output = child.before.decode('utf-8')
+
+            # Read the calibration files
+            try:
+                with open("test_imu_acc.calib", "r") as acc_calib_file:
+                    acc_calib_data = acc_calib_file.read()
+                with open("test_imu_gyro.calib", "r") as gyro_calib_file:
+                    gyro_calib_data = gyro_calib_file.read()
+                
+                calib_params = {
+                    'acc_calib': acc_calib_data,
+                    'gyro_calib': gyro_calib_data
+                }
+                
+                # Return the calibration data as a JSON response
+                return jsonify({'status': 'success', 'output': output, 'calib_params': calib_params})
+                
+                if response.status_code == 200:
+                    return jsonify({'status': 'success', 'output': output, 'server_response': response.json()})
+                else:
+                    return jsonify({'status': 'error', 'message': 'Failed to send calibration data to the server'})
+                
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': f'Failed to read calibration files: {str(e)}'})
+            
+
+            # return jsonify({'status': 'success', 'output': output})
+        except pexpect.ExceptionPexpect as e:
+            return jsonify({'status': 'error', 'message': str(e)})
     else:
         return jsonify({'status': 'error', 'message': 'No recent files to calibrate'})
 
+@app.route('/get_calibrated_data', methods=['GET'])
+def get_calibrated_data():
+    global calibration_enabled
+    calibration_enabled = True
+    return jsonify(status='success', message='Calibrated data will now be applied')
+
+import re
+
+def parse_calibration_data(data):
+    lines = data.strip().split('\n')
+    parsed_data = []
+    for line in lines:
+        numbers = re.findall(r'[-+]?\d*\.\d+|\d+', line)
+        if numbers:
+            parsed_data.append([float(num) for num in numbers])
+    return parsed_data
+
+@app.route('/upload_calibration_files', methods=['POST'])
+def upload_calibration_files():
+    data = request.json
+    acc_data = data['accData']
+    gyro_data = data['gyroData']
+
+    try:
+        global Ta, Ka, acce_bias
+        global Tg, Kg, gyro_bias
+
+        acc_parsed = parse_calibration_data(acc_data)
+        gyro_parsed = parse_calibration_data(gyro_data)
+
+        if len(acc_parsed) < 9 or len(gyro_parsed) < 9:
+            raise ValueError("Incomplete calibration data")
+
+        Ta = acc_parsed[:3]
+        Ka = acc_parsed[3:6]
+        acce_bias = [row[0] for row in acc_parsed[6:9]]
+
+        Tg = gyro_parsed[:3]
+        Kg = gyro_parsed[3:6]
+        gyro_bias = [row[0] for row in gyro_parsed[6:9]]
+        print(Ta, Ka, acce_bias)
+        print(Tg, Kg, gyro_bias)
+
+        return jsonify(status='success', message='Calibration parameters updated')
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return jsonify(status='error', message=str(e)), 400
+
+
+import pexpect
+
+# @app.route('/receive_calib_params', methods=['POST'])
+# def receive_calib_params():
+#     data = request.json
+#     if 'acc_calib' in data and 'gyro_calib' in data:
+#         acc_calib = data['acc_calib']
+#         gyro_calib = data['gyro_calib']
+#         print("Received Accelerometer Calibration Data:", acc_calib)
+#         print("Received Gyroscope Calibration Data:", gyro_calib)
+#         return jsonify({'status': 'success', 'message': 'Calibration data received'})
+#     else:
+#         return jsonify({'status': 'error', 'message': 'Invalid calibration data'}), 400
 
 
 # @socketio.on('connect')

@@ -233,8 +233,8 @@
         socket.on('sensor_data', function(data) {
             const { Tio, accel, gyro } = data;
             contor += 1;
-            console.log('Received data:', Tio, accel, gyro); // Debug statement
-            console.log(contor)
+            // console.log('Received data:', Tio, accel, gyro); // Debug statement
+            // console.log(contor)
             TioData.push(Tio);
             accelX.push(accel[0]);
             accelY.push(accel[1]);
@@ -542,12 +542,29 @@ function showMessage() {
         }
 
         async function plotThis() {
-            const recordingName = document.getElementById('recordingName').value;
-            const response = await fetch(`/plot_data?recordingName=${recordingName}`);
+            // const recordingName = document.getElementById('recordingName').value;
+            const response = await fetch(`/plot_data`);
             if (response.ok) {
                 alert('Plotting started');
             } else {
                 alert('Error plotting data');
+            }
+        }        
+        
+        async function getCalibratedData() {
+            try {
+                const response = await fetch('/get_calibrated_data', {
+                    method: 'GET'
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Calibrated Data:', data);
+                    // alert('Calibrated data retrieved successfully.');
+                } else {
+                    alert('Error retrieving calibrated data');
+                }
+            } catch (error) {
+                console.error('Error:', error);
             }
         }
 
@@ -559,26 +576,34 @@ function showMessage() {
 
         async function calibrate() {
             // alert('Calibrate button clicked');
-            if (isRecording) {
-            // Stop Recording Logic
-            console.log("Calibration started")
-            const response = await fetch('/calibrate', {
-                method: 'GET'
-            });
-            if (response.ok) {
-                // alert('Recording stopped');
-                // clearPlot();
-                console.log("did calib")
-                // stopRecording();
-                // resetToStartRecordingState();
-                // // Add the flashing ring class
-                timerContainer.classList.remove('flashing-ring'); // Remove the flashing ring class
+            if (true) {
+                // Stop Recording Logic
+                console.log("Calibration started");
+                try {
+                    const response = await fetch('/calibrate', {
+                        method: 'GET'
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log("Calibration complete");
+                        console.log("Output:", data.output);
+                        console.log("Calibration Parameters:", data.calib_params);
+                        
+                        // Display the calibration parameters
+                        alert('Calibration successful. Check console for details.');
+                        console.log('Accelerometer Calibration Data:', data.calib_params.acc_calib);
+                        console.log('Gyroscope Calibration Data:', data.calib_params.gyro_calib);
 
-            } else {
-                alert('Error stopping calib');
-            }        
+                        // Add the flashing ring class
+                        timerContainer.classList.remove('flashing-ring'); // Remove the flashing ring class
+                    } else {
+                        alert('Error during calibration');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                }
+            }
         }
-    }
 
         async function closeSerial() {
             const response = await fetch('/close_serial', {
@@ -591,6 +616,44 @@ function showMessage() {
                 console.error(`Error: ${result.message}`);
             }
         }
+
+
+        async function uploadCalibrationFiles() {
+            const accFile = document.getElementById('accFileInput').files[0];
+            const gyroFile = document.getElementById('gyroFileInput').files[0];
+
+            if (!accFile || !gyroFile) {
+                alert('Please select both accelerometer and gyroscope calibration files.');
+                return;
+            }
+
+            const accData = await accFile.text();
+            const gyroData = await gyroFile.text();
+
+            const calibrationData = {
+                accData: accData,
+                gyroData: gyroData
+            };
+
+            try {
+                const response = await fetch('/upload_calibration_files', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(calibrationData)
+                });
+
+                if (response.ok) {
+                    alert('Calibration files uploaded successfully.');
+                } else {
+                    alert('Error uploading calibration files');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+ 
 
         function clearPlotAndStartRecording() {
             clearPlots();
@@ -717,7 +780,13 @@ function showMessage() {
                 <button id="plotButton" onclick="plotThis()">Plot This</button>
                 <button id="calibrateButton" onclick="calibrate()">Calibrate</button>
             </div>
+            <button type="button" onclick="getCalibratedData()">Get Calibrated Data</button>
 
+            <h3>Upload Calibration Files</h3>
+            <input type="file" id="accFileInput" accept=".calib">
+            <input type="file" id="gyroFileInput" accept=".calib">
+            <button type="button" onclick="uploadCalibrationFiles()">Upload Calibration Files</button>
+        
             
             <!-- <button onclick="clearPlotAndStartRecording()">Start Recording</button> -->
         </div>
